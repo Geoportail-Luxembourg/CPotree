@@ -388,7 +388,14 @@ inline string readAWSS3(string path, string range) {
 	else if (const char* env_p = std::getenv("AWS_ENDPOINT_URL_S3")) {
 		clientConfig.endpointOverride = env_p;
 	}
-	auto client = Aws::S3::S3Client(clientConfig);
+	
+	bool usePathStyle = false; // Default to virtual-style addressing
+    if (const char* env_p = std::getenv("AWS_USE_PATH_STYLE")) {
+        std::string env_value(env_p);
+        usePathStyle = (env_value == "true" || env_value == "1");
+    }
+
+	auto client = Aws::S3::S3Client(clientConfig, Aws::Client::AWSAuthV4Signer::PayloadSigningPolicy::Never, !usePathStyle);
 	auto request = Aws::S3::Model::GetObjectRequest();
 	request.SetBucket(bucket.c_str());
 	request.SetKey(key.c_str());
