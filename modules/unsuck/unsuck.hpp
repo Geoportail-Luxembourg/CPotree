@@ -371,31 +371,48 @@ inline bool iEndsWith(const std::string& str, const std::string& suffix) {
 }
 
 #ifdef WITH_AWS_SDK
+
+// Static shared pointer to reuse the S3 client
+inline std::shared_ptr<Aws::S3::S3Client> getS3Client() {
+    static std::shared_ptr<Aws::S3::S3Client> s3Client;
+    static std::once_flag initFlag;
+
+    std::call_once(initFlag, []() {
+        auto clientConfig = Aws::Client::ClientConfiguration();
+        if (const char* env_p = std::getenv("AWS_ENDPOINT_URL")) {
+            clientConfig.endpointOverride = env_p;
+        } else if (const char* env_p = std::getenv("AWS_ENDPOINT_URL_S3")) {
+            clientConfig.endpointOverride = env_p;
+        }
+
+        bool usePathStyle = false; // Default to virtual-style addressing
+        if (const char* env_p = std::getenv("AWS_USE_PATH_STYLE")) {
+            std::string env_value(env_p);
+            usePathStyle = (env_value == "true" || env_value == "1");
+        }
+
+        s3Client = std::make_shared<Aws::S3::S3Client>(
+			clientConfig,
+            Aws::Client::AWSAuthV4Signer::PayloadSigningPolicy::Never,
+            !usePathStyle
+        );
+    });
+
+    return s3Client;
+}
+
 inline string readAWSS3(string path, string range) {
 	auto no_proto = path.substr(5);
 	auto parts = split(no_proto, '/');
 	auto bucket = parts[0];
 	auto key = no_proto.substr(bucket.size() + 1);
+
 	if (std::getenv("DEBUG") == "TRUE") {
 		cout << "bucket: " << bucket << endl;
 		cout << "key: " << key << endl;
 	}
 
-	auto clientConfig = Aws::Client::ClientConfiguration();
-	if (const char* env_p = std::getenv("AWS_ENDPOINT_URL")) {
-		clientConfig.endpointOverride = env_p;
-	}
-	else if (const char* env_p = std::getenv("AWS_ENDPOINT_URL_S3")) {
-		clientConfig.endpointOverride = env_p;
-	}
-	
-	bool usePathStyle = false; // Default to virtual-style addressing
-    if (const char* env_p = std::getenv("AWS_USE_PATH_STYLE")) {
-        std::string env_value(env_p);
-        usePathStyle = (env_value == "true" || env_value == "1");
-    }
-
-	auto client = Aws::S3::S3Client(clientConfig, Aws::Client::AWSAuthV4Signer::PayloadSigningPolicy::Never, !usePathStyle);
+	auto client = getS3Client();
 	auto request = Aws::S3::Model::GetObjectRequest();
 	request.SetBucket(bucket.c_str());
 	request.SetKey(key.c_str());
@@ -406,7 +423,7 @@ inline string readAWSS3(string path, string range) {
 		request.SetRange(range.c_str());
 	}
 
-	auto outcome = client.GetObject(request);
+	auto outcome = client->GetObject(request);
 
 	if (outcome.IsSuccess()) {
 		auto& stream = outcome.GetResult().GetBody();
