@@ -385,6 +385,11 @@ inline std::shared_ptr<Aws::S3::S3Client> getS3Client() {
             clientConfig.endpointOverride = env_p;
         }
 
+		clientConfig.requestTimeoutMs = 3000;
+		clientConfig.connectTimeoutMs = 1000;
+		clientConfig.maxConnections = 25; // Increase for higher concurrency
+		clientConfig.enableTcpKeepAlive = true;
+
         bool usePathStyle = false; // Default to virtual-style addressing
         if (const char* env_p = std::getenv("AWS_USE_PATH_STYLE")) {
             std::string env_value(env_p);
